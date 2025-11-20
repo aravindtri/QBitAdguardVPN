@@ -51,3 +51,18 @@ The VPN connection is isolated to the container.
 
 - If the container keeps restarting or logs show "Connection failed", ensure you have logged in correctly.
 - If qBittorrent doesn't download, check if the VPN is actually connected.
+- To find the temporary WebUI password in the logs (PowerShell):
+
+    ```powershell
+    docker logs qbittorrent-vpn 2>&1 `
+        | Select-String "A temporary password is provided for this session" `
+        | Select-Object -Last 1
+    ```
+
+- To find the temporary WebUI password in the logs (bash):
+
+    ```bash
+    docker logs qbittorrent-vpn 2>&1 \
+      | grep "A temporary password is provided for this session" \
+      | tail -n 1
+    ```
