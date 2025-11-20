@@ -1,0 +1,27 @@
+#!/usr/bin/with-contenv bash
+
+echo "Starting AdGuard VPN CLI..."
+
+# Check if we have a login token or config
+# Since we don't know exactly how AdGuard stores login, we just try to connect.
+# If connect fails, we assume login is needed.
+
+echo "AdGuard VPN: Attempting to connect..."
+# We use --no-fork to keep it in foreground for s6
+# If it fails (e.g. not logged in), it will exit.
+# We capture the exit code.
+
+adguardvpn-cli connect --no-fork --yes
+
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "AdGuard VPN: Connection failed (Exit code: $EXIT_CODE)."
+    echo "If you have not logged in, please exec into the container and run:"
+    echo "  docker exec -it <container_name> adguardvpn-cli login"
+    echo "Then restart the container."
+    
+    # Sleep to prevent busy loop restart by s6
+    sleep 60
+    exit 1
+fi

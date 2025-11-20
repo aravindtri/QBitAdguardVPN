@@ -1,0 +1,63 @@
+#!/bin/bash
+# Setup persistence for AdGuard VPN CLI
+echo "Setting up AdGuard VPN CLI persistence..."
+
+# Define paths
+CONFIG_DIR="/config/adguardvpn-cli"
+DATA_DIR="/root/.local/share/adguardvpn-cli"
+CONF_HOME="/root/.config/adguardvpn-cli"
+
+# Create config dir in volume if it doesn't exist
+if [ ! -d "$CONFIG_DIR" ]; then
+    mkdir -p "$CONFIG_DIR"
+fi
+
+# Symlink data directory
+mkdir -p /root/.local/share
+if [ -d "$DATA_DIR" ] && [ ! -L "$DATA_DIR" ]; then
+    # If it exists and is not a symlink (e.g. from install), move it
+    mv "$DATA_DIR"/* "$CONFIG_DIR/" 2>/dev/null
+    rm -rf "$DATA_DIR"
+fi
+ln -sfn "$CONFIG_DIR" "$DATA_DIR"
+
+# Symlink config directory (just in case it uses .config too)
+mkdir -p /root/.config
+if [ -d "$CONF_HOME" ] && [ ! -L "$CONF_HOME" ]; then
+    mv "$CONF_HOME"/* "$CONFIG_DIR/" 2>/dev/null
+    rm -rf "$CONF_HOME"
+fi
+ln -sfn "$CONFIG_DIR" "$CONF_HOME"
+
+# Pre-configure AdGuard VPN to avoid interactive prompts
+echo "Configuring AdGuard VPN defaults..."
+# We ignore errors here in case it fails due to no login, but config usually works.
+adguardvpn-cli config set-mode TUN >/dev/null 2>&1 || true
+adguardvpn-cli config set-tun-routing-mode AUTO >/dev/null 2>&1 || true
+
+# Configure qBittorrent to use tun0
+QBIT_CONF="/config/qBittorrent/qBittorrent.conf"
+if [ -f "$QBIT_CONF" ]; then
+    echo "Configuring qBittorrent to use tun0 interface..."
+    
+    # Ensure [Preferences] section exists
+    if ! grep -q "\[Preferences\]" "$QBIT_CONF"; then
+        echo "[Preferences]" >> "$QBIT_CONF"
+    fi
+
+    # Set Connection\Interface
+    if grep -q "Connection\\\\Interface=" "$QBIT_CONF"; then
+        sed -i 's|Connection\\Interface=.*|Connection\\Interface=tun0|g' "$QBIT_CONF"
+    else
+        sed -i '/\[Preferences\]/a Connection\\Interface=tun0' "$QBIT_CONF"
+    fi
+    
+    # Set Connection\InterfaceName (for newer versions)
+    if grep -q "Connection\\\\InterfaceName=" "$QBIT_CONF"; then
+        sed -i 's|Connection\\InterfaceName=.*|Connection\\InterfaceName=tun0|g' "$QBIT_CONF"
+    else
+        sed -i '/\[Preferences\]/a Connection\\InterfaceName=tun0' "$QBIT_CONF"
+    fi
+fi
+
+echo "AdGuard VPN setup complete."

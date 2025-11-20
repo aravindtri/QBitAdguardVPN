@@ -1,0 +1,21 @@
+services:
+  qbittorrent-vpn:
+    build: ./docker-build
+    container_name: qbittorrent-vpn
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    restart: unless-stopped
