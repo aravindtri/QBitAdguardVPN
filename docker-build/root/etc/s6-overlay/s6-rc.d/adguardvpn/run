@@ -28,6 +28,8 @@ if ! adguard_logged_in >/tmp/adguard-status.txt; then
     echo "Log in with the helper so this service is stopped first:"
     echo "  docker exec -it qbittorrent-vpn adguard-login"
     cat /tmp/adguard-status.txt
+    flock -u 9 2>/dev/null || true
+    exec 9>&-
     sleep 60
     exit 1
 fi

@@ -155,6 +155,20 @@ adguard_identity_ready() {
     [ "$current" = "$saved" ]
 }
 
+# BusyBox flock has no -w. Retry a non-blocking lock instead.
+adguard_lock_wait() {
+    local fd="$1"
+    local tries="${2:-30}"
+    local i=0
+    while ! flock -n "$fd"; do
+        i=$((i + 1))
+        if [ "$i" -ge "$tries" ]; then
+            return 1
+        fi
+        sleep 1
+    done
+}
+
 # Prints CLI status. Returns 1 when the profile is logged out.
 # Caller must already have pinned the MAC. This command can wipe a profile
 # when the MAC does not match.

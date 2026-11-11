@@ -31,7 +31,7 @@ fi
 
 lock="$(adguard_identity_dir)/cli.lock"
 exec 9>"$lock"
-if ! flock -w 30 9; then
+if ! adguard_lock_wait 9 30; then
     echo "Could not lock the AdGuard CLI. Another command is still running."
     exit 1
 fi
