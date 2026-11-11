@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bash
+# qBittorrent is bound to tun0. Wait until the tunnel exists so it does not
+# start on eth0 and announce the real address.
+echo "Waiting for tun0 before qBittorrent starts..."
+while [ ! -d /sys/class/net/tun0 ]; do
+    sleep 2
+done
+echo "tun0 is up."

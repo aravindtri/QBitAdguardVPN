@@ -2,26 +2,68 @@
 
 echo "Starting AdGuard VPN CLI..."
 
-# Check if we have a login token or config
-# Since we don't know exactly how AdGuard stores login, we just try to connect.
-# If connect fails, we assume login is needed.
+# shellcheck disable=SC1091
+. /usr/local/lib/adguard-persist.sh
+adguard_prepare
 
-echo "AdGuard VPN: Attempting to connect..."
-# We use --no-fork to keep it in foreground for s6
-# If it fails (e.g. not logged in), it will exit.
-# We capture the exit code.
-
-adguardvpn-cli connect --no-fork --yes
-
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "AdGuard VPN: Connection failed (Exit code: $EXIT_CODE)."
-    echo "If you have not logged in, please exec into the container and run:"
-    echo "  docker exec -it <container_name> adguardvpn-cli login"
-    echo "Then restart the container."
-    
-    # Sleep to prevent busy loop restart by s6
+if ! adguard_identity_ready; then
+    echo "AdGuard VPN: refusing to run the CLI until the interface MAC matches the saved identity."
+    echo "Saved MAC: $(cat "$(adguard_identity_dir)/mac" 2>/dev/null || echo missing)"
+    echo "Put that value in docker-compose.yml as mac_address, then recreate the container."
+    echo "Do not run adguardvpn-cli config or status until the MAC matches. Those commands can wipe the login."
     sleep 60
     exit 1
 fi
+
+lock="$(adguard_identity_dir)/cli.lock"
+exec 9>"$lock"
+if ! flock -n 9; then
+    echo "AdGuard VPN: CLI is busy. Waiting so login is not interrupted."
+    sleep 15
+    exit 1
+fi
+
+if ! adguard_logged_in >/tmp/adguard-status.txt; then
+    echo "AdGuard VPN: not logged in. Profile store is /config/adguardvpn-cli."
+    echo "Log in with the helper so this service is stopped first:"
+    echo "  docker exec -it qbittorrent-vpn adguard-login"
+    cat /tmp/adguard-status.txt
+    sleep 60
+    exit 1
+fi
+
+# Safe only after the MAC check and the login check above.
+adguardvpn-cli config set-mode TUN >/dev/null 2>&1 || true
+adguardvpn-cli config set-tun-routing-mode AUTO >/dev/null 2>&1 || true
+
+args=(connect --no-fork --yes)
+location=""
+if [ -n "${VPN_LOCATION:-}" ]; then
+    location="$VPN_LOCATION"
+elif [ -s "$(adguard_identity_dir)/location" ]; then
+    location="$(tr -d '[:space:]' < "$(adguard_identity_dir)/location")"
+fi
+if [ -n "$location" ]; then
+    echo "AdGuard VPN: connecting to ${location}"
+    args+=(-l "$location")
+else
+    echo "AdGuard VPN: connecting to the last location"
+fi
+
+adguardvpn-cli "${args[@]}" &
+cli_pid=$!
+trap 'kill -TERM "$cli_pid" 2>/dev/null || true; wait "$cli_pid" 2>/dev/null || true; exit 0' TERM INT
+wait "$cli_pid"
+exit_code=$?
+trap - TERM INT
+
+if [ "$exit_code" -ne 0 ]; then
+    echo "AdGuard VPN: connection failed (exit code: $exit_code)."
+    echo "If this says you must log in, run:"
+    echo "  docker exec -it qbittorrent-vpn adguard-login"
+    sleep 60
+    exit "$exit_code"
+fi
+
+# A clean CLI exit means the tunnel dropped. Restart it.
+exit 1

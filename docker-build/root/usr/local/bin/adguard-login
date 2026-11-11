@@ -1,0 +1,46 @@
+#!/bin/bash
+# Stop the VPN service, log in once, then start it again.
+# A second adguardvpn-cli process can clear the login, so do not run
+# `adguardvpn-cli login` while the service is also starting.
+
+set -u
+
+# shellcheck disable=SC1091
+. /usr/local/lib/adguard-persist.sh
+adguard_prepare
+
+if ! adguard_identity_ready; then
+    echo "Refusing to log in. The interface MAC does not match $(adguard_identity_dir)/mac."
+    echo "Set mac_address in docker-compose.yml to that value and recreate the container."
+    echo "Running login now would save a token this container cannot read after the next start."
+    exit 1
+fi
+
+export HOME=/root
+unset XDG_DATA_HOME
+unset XDG_CONFIG_HOME
+
+if [ -d /run/service/adguardvpn ]; then
+    s6-svc -d /run/service/adguardvpn || true
+    if command -v s6-svwait >/dev/null 2>&1; then
+        s6-svwait -D -t 20000 /run/service/adguardvpn || true
+    else
+        sleep 2
+    fi
+fi
+
+lock="$(adguard_identity_dir)/cli.lock"
+exec 9>"$lock"
+if ! flock -w 30 9; then
+    echo "Could not lock the AdGuard CLI. Another command is still running."
+    exit 1
+fi
+
+adguardvpn-cli login
+rc=$?
+
+if [ -d /run/service/adguardvpn ]; then
+    s6-svc -u /run/service/adguardvpn || true
+fi
+
+exit "$rc"

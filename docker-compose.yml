@@ -2,16 +2,21 @@ services:
   qbittorrent-vpn:
     build: ./docker-build
     container_name: qbittorrent-vpn
+    hostname: qbittorrent-vpn
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
       - WEBUI_PORT=8080
+      # Country, city, or ISO code. Unset reuses the last location.
+      # - VPN_LOCATION=NL
     volumes:
       - ./config:/config
       - ./downloads:/downloads
     ports:
       - 8080:8080
+      # Published torrent port arrives on eth0, not tun0. qBittorrent is bound
+      # to tun0, so this mapping does not receive peer connections.
       - 6881:6881
       - 6881:6881/udp
     cap_add:
@@ -19,3 +24,6 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     restart: unless-stopped
+    # After the first start, copy ./config/adguardvpn-identity/mac here.
+    # A recreate without this value gets a new MAC and cannot read the login.
+    # mac_address: "02:42:ac:11:00:02"
